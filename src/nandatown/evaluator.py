@@ -480,13 +480,18 @@ def evaluate(profile: TestProfile, run_id: str, events: list[TownEvent],
         # flag cannot see that; the town's record can. Held means the town
         # redelivered after the restart and absorbed the second answer as a
         # replay of the response it already accepted.
-        # The proof is one chain, in record order: crash, restart, the
-        # seller's second claim of this request, then a replay of its
-        # response. A replay from before the crash proves nothing about
+        # The proof is one chain, in record order: the town accepting the
+        # seller's response to this request, crash, restart, the seller's
+        # second claim of this request, then a replay of that response.
+        # Without that acceptance before the crash there was no answer to
+        # forget, and a replay from before the crash proves nothing about
         # what the restarted seller did.
         position = {e.event_id: i for i, e in enumerate(events)}
         chain: list[TownEvent] = []
         for candidates in (
+                [r for r in accepted_resp
+                 if r.detail.get("sender") == seller
+                 and _response_mismatch([r], accepted_req) is None],
                 find("participant_crashed", subject=seller),
                 find("participant_restarted", subject=seller),
                 [c for c in claims if c.detail.get("attempt", 1) >= 2
@@ -501,11 +506,11 @@ def evaluate(profile: TestProfile, run_id: str, events: list[TownEvent],
             if nxt is None:
                 break
             chain.append(nxt)
-        if len(chain) < 3:
+        if len(chain) < 4:
             stages.append(_missing("amnesia_survived",
-                                   "no seller crash followed by a restart"
-                                   " and redelivery"))
-        elif len(accepted_resp) == 1 and len(chain) == 4:
+                                   "no accepted seller response followed by"
+                                   " a crash, a restart and redelivery"))
+        elif len(accepted_resp) == 1 and len(chain) == 5:
             stages.append(_passed(
                 "amnesia_survived", [e.event_id for e in chain],
                 "the forgotten work was applied again, and the town"
